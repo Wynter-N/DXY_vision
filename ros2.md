@@ -36,7 +36,7 @@ colcon build
 source install /setup.bash
 ```
 构建完成后需要将工作空间的环境变量添加到当前的终端会话中，以便能够正确使用工作空间中的软件包  
-这条命令会将install文件夹中的setup.bash文件中的环境变量设置加载到当前终端中
+这条命令会将install文件夹中的setup.bash文件中的环境变量设置加载到当前终端中 <br>
 *如果希望每次打开终端都自动加载，可以添加到~/.bashrc文件中*
 
 ```
