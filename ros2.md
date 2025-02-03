@@ -226,4 +226,103 @@ C++功能包：
 - package.xml
 - CMakerLists.txt：编译规则
 
+## 节点
+每一个节点都是进程，执行具体任务，是一个独立运行的可执行文件，可以用不同的编程语言。 <br>
+节点可分布式运行在不同的主机，通过节点名称进行管理。<br>
+节点存储在功能包中，工作空间包括功能包。 <br>
+实际开发中，节点之间可以通过话题、服务、动作等方式进行通信。（topic service action）<br>
+### 实现一个节点的基本流程：
+已经创建完工作空间和功能包>>
+- 编程接口初始化：指对ros2的客户端库（如rclpy和rclcpp）进行初始化操作，以便节点能够与ros2系统进行交互，初始化过程会为节点分配必要的系统资源，如内存、线程等。
+例如`rclpy.init(args=args)`完成了客户端库的初始化，args参数用于传递命令行参数
+- 创建节点并初始化
+- 实现节点功能
+- 销毁节点并关闭接口
+### 案例：循环打印Hello World节点
+####  面向过程
+node_helloworld.py
+```
+import rclpy    #ros2接口库
+from rclpy.node import Node    #ros2 节点类
+import time
+
+def main(args=None):    #主入口
+    rclpy.init(args=args)    #初始化接口
+    node = Node("node_helloworld")    #创建ros2节点对象并进行初始化
+       
+    while rclpy.ok():    #检查系统正常运行
+        node.get_logger().info("Hello World")    #日志输出
+        time.sleep(0.5)
+    node.destroy_node()    #销毁节点对象
+    rclpy.shutdown()    #关闭接口
+           
+```
+编写代码完成后需要设置功能包的编译选项，让系统知道Python程序的入口
+setup.py
+```
+#打开文件，增加如下入口点的配置
+entry_points={
+    'console_scripts' : [
+        'node_helloworld        = learning_node.node_helloworld:main',
+    ],
+    …
+}
+```
+#### 面向对象
+```
+import rclpy                                     
+from rclpy.node import Node                      
+import time
+class HelloWorldNode(Node):
+    def __init__(self, name):
+        super().__init__(name)                     
+        while rclpy.ok():                          
+            self.get_logger().info("Hello World") #使用节点的日志记录输出一条信息日志，内容为helloworld
+            time.sleep(0.5)                        
+
+def main(args=None):                               
+    rclpy.init(args=args)                          
+    node = HelloWorldNode("node_helloworld_class") #创建一个HelloWorld的实例，节点名称为node_helloworld_class
+    rclpy.spin(node)进入节点的主循环，该函数会阻塞当前进程，直到节点被关闭或者ros2系统退出，在这个循环中，节点会处理接收到的消息和事件                               
+    node.destroy_node()                            
+    rclpy.shutdown()
+```
+日志记录器可以方便地记录节点的运行信息，便于调试和监控
+
+增加入口点的配置
+```
+    entry_points={
+        'console_scripts': [
+         'node_helloworld       = learning_node.node_helloworld:main',
+         'node_helloworld_class = learning_node.node_helloworld_class:main',
+        ],
+```
+
+### 案例：物体识别节点（视觉任务二ros2巩固）
+待补充
+***
+## 通信接口
+ros2提供了多种通信接口，用于在不同节点之间实现数据的交换和交互。<br>
+给传递的数据定义一个标准的结构，就是接口。<br>
+
+### 话题：异步通信
+topic是一种实现节点间通信的核心机制，用于在不同节点之间进行异步、单向的数据传输。
+1. 节点可以扮演发布者或者订阅者的角色（Publisher | Subscriber）发布者负责生产并向特定话题发送消息，订阅者关注这些消息并处理。一个话题可以有多个发布者和订阅者，这种松耦合的方式让系统具有良好的可扩展性和灵活性。
+2. 每一个话题的名称是唯一的，用于标识，发布者和订阅者通过话题名称来进行匹配。
+3. 话题上传递的消息遵循特定的消息类型，消息类型定义了消息的结构，包括消息中包含的字段及其数据类型。使用同一个话题的发布者和订阅者，必须使用相同的消息类型。
+4. 使用场景：传感器数据传输（激光雷达/摄像头-->定位/建图节点），状态信息共享（机器人的各个部件如电机/关节-->电机的转速/电流），可视化数据展示（数据-->可视化操作）。
+5. 异步操作，不适合逻辑性强的指令，比如修改某一个参数。
+### 服务：同步通信
+基于请求--响应模式的通信机制
+service client向提供服务的节点（service server）发送请求，后者根据收到的请求进行相应的处理之后，返回一个响应给客户端。<br>
+这种通信方式是同步的，即客户端发送请求后会等待服务器的响应，直到收到响应才会继续执行后续操作。
+1. 每个服务的名称是唯一的。
+2. 服务使用特定的服务类型来定义请求和响应的结构，服务类型文件（通常以.srv为扩展名）包括请求部分和响应部分，分别定义了客户端发送的请求数据结构和服务器返回的响应数据结构。
+3. 使用场景：一次性任务请求（初始化、重置请求）、配置参数设置（客户端发送修改运动速度、传感器采样频率等参数，服务器接收请求后更新相应的配置参数，并返回设置结果）、复杂计算请求（将计算任务封装在服务器中）
+### 动作
+### 案例
+#### 通信接口的定义与使用
+##### 服务接口
+##### 话题接口
+
 
