@@ -85,6 +85,7 @@ ros2 pkg create --build-type ament_python py_ros2_pkg --dependencies rclpy
 - --dependencies rclpy 指定功能包依赖于rclpy（ROS 2 的 Python 客户端库）
 
 
+
 #### 编写节点代码
 #在py_ros2_pkg功能包的py_ros2_pkg目录下（注意有两个同名目录），创建一个 Python 文件，例如talker.py
 ```
@@ -320,9 +321,201 @@ service client向提供服务的节点（service server）发送请求，后者�
 2. 服务使用特定的服务类型来定义请求和响应的结构，服务类型文件（通常以.srv为扩展名）包括请求部分和响应部分，分别定义了客户端发送的请求数据结构和服务器返回的响应数据结构。
 3. 使用场景：一次性任务请求（初始化、重置请求）、配置参数设置（客户端发送修改运动速度、传感器采样频率等参数，服务器接收请求后更新相应的配置参数，并返回设置结果）、复杂计算请求（将计算任务封装在服务器中）
 ### 动作
+动作通常用于执行那些需要一段时间才能完成，并且可能需要在执行过程中进行状态反馈和允许被取消的任务，例如机器人的导航、机械臂的运动等。与服务不同，服务是一次性的请求 - 响应模式，而动作允许在任务执行期间持续地接收反馈信息；与话题不同，话题是单向的消息发布 - 订阅，动作提供了请求 - 响应和反馈的双向交互。
 ### 案例
 #### 通信接口的定义与使用
 ##### 服务接口
-##### 话题接口
+![image](https://github.com/user-attachments/assets/977ac3db-76f2-46d6-8431-7fbf029d2224)
 
+1. 接口定义：
+```
+#~/ws/src/learning_interface/srv/GetObjectPosition.srv
+bool get;  #get为true则表示需要一次位置，客户端发送请求，服务端反馈位置
+int32 x;
+int32 y;
+```
+此外，还需要在功能包的CMakeList.txt中配置编译选项，让编译器在编译过程中根据接口定义，自动生成不同语言的代码。
+```
+...
+
+find_package(rosidl_default_generators REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/GetObjectPosition.srv"
+)
+
+...
+```
+package.xml文件中也需要添加代码生成的功能依赖
+```
+ ...
+
+ <build_depend>rosidl_default_generators</build_depend>
+ <exec_depend>rosidl_default_runtime</exec_depend>
+ <member_of_group>rosidl_interface_packages</member_of_group>
+
+ ...
+```
+2. 程序调用--客户端接口调用
+
+```
+#~/ws/src/learning_interface/service_object_client.py
+
+import rclpy
+from rclpy.node import Node  #Node-> ros2节点类 用于管理和创建节点
+from learning_interface.srv import GetObjectPosition   #自定义的服务接口
+
+#定义客户端类节点
+class objectClient(Node):
+    def __init__(self, name):  #类的构造函数 用于初始化节点 self是实例的引用，name是节点的名称
+        super().__init__(name)   #调用父类Node的构造函数，初始化节点名称                       
+        self.client = self.create_client(GetObjectPosition, 'get_target_position')    #调用Node类的creat_client方法创建一个服务客户端，该方法的语法为creat_client(service_type,service_name)
+        while not self.client.wait_for_service(timeout_sec=1.0):
+            self.get_logger().info('service not available, waiting again...')  #等待一秒如果服务不可用返回
+        self.request = GetObjectPosition.Request()  #创建一个服务请求对象 
+        
+    def send_request(self):    #定义一个send_request的方法 用于发送服务请求
+        self.request.get = True    #设置服务请求对象的get字段为true，表示请求获取目标对象的位置
+        self.future = self.client.call_async(self.request)
+        
+
+#主函数
+def main(args=None):    #args是传给ros2的初始化参数 默认为None
+    rclpy.init(args=args)
+    node = objectClient("service_object_client") 创建一个实例并命名
+    node.send_request()    #调用方法发送请求
+    
+
+
+ while rclpy.ok():    #检查ros2函数是否正常运行的函数 
+        rclpy.spin_once(node)
+
+        if node.future.done():    #检查调用是否完成
+            try:
+                response = node.future.result()
+            except Exception as e:
+                node.get_logger().info(
+                    'Service call failed %r' % (e,))
+            else:
+                node.get_logger().info(
+                    'Result of object position:\n x: %d y: %d' %
+                    (response.x, response.y))
+            break
+
+
+ node.destroy_node()       # 销毁节点对象
+    rclpy.shutdown()       # 关闭ROS2 Python接口
+```
+3. 程序调用--服务端接口调用 
+
+```
+#~/ws/src/learning_service/service_object_server.py
+
+import rclpy                                           # ROS2 Python接口库
+from rclpy.node import Node                            # ROS2 节点类
+from sensor_msgs.msg import Image                      # 图像消息类型
+import numpy as np                                     # Python数值计算库
+from cv_bridge import CvBridge                         # ROS与OpenCV图像转换类
+import cv2                                             # Opencv图像处理库
+from learning_interface.srv import GetObjectPosition   # 自定义的服务接口
+
+lower_red = np.array([0, 90, 128])     # 红色的HSV阈值下限
+upper_red = np.array([180, 255, 255])  # 红色的HSV阈值上限
+
+class ImageSubscriber(Node):
+    def __init__(self, name):
+        super().__init__(name)                              # ROS2节点父类初始化
+        self.sub = self.create_subscription(
+            Image, 'image_raw', self.listener_callback, 10) # 创建订阅者对象（消息类型、话题名、订阅者回调函数、队列长度）
+        self.cv_bridge = CvBridge()                         # 创建一个图像转换对象，用于OpenCV图像与ROS的图像消息的互相转换
+
+        self.srv = self.create_service(GetObjectPosition,   # 创建服务器对象（接口类型、服务名、服务器回调函数）
+                                       'get_target_position',
+                                       self.object_position_callback)    
+        self.objectX = 0
+        self.objectY = 0                              
+
+    def object_detect(self, image):
+        hsv_img = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)      # 图像从BGR颜色模型转换为HSV模型
+        mask_red = cv2.inRange(hsv_img, lower_red, upper_red) # 图像二值化
+        contours, hierarchy = cv2.findContours(
+            mask_red, cv2.RETR_LIST, cv2.CHAIN_APPROX_NONE)   # 图像中轮廓检测
+
+        for cnt in contours:                                  # 去除一些轮廓面积太小的噪声
+            if cnt.shape[0] < 150:
+                continue
+
+            (x, y, w, h) = cv2.boundingRect(cnt)              # 得到苹果所在轮廓的左上角xy像素坐标及轮廓范围的宽和高
+            cv2.drawContours(image, [cnt], -1, (0, 255, 0), 2)# 将苹果的轮廓勾勒出来
+            cv2.circle(image, (int(x+w/2), int(y+h/2)), 5,
+                       (0, 255, 0), -1)                       # 将苹果的图像中心点画出来
+
+            self.objectX = int(x+w/2)
+            self.objectY = int(y+h/2)
+
+        cv2.imshow("object", image)                            # 使用OpenCV显示处理后的图像效果
+        cv2.waitKey(50)
+
+    def listener_callback(self, data):
+        self.get_logger().info('Receiving video frame')        # 输出日志信息，提示已进入回调函数
+        image = self.cv_bridge.imgmsg_to_cv2(data, 'bgr8')     # 将ROS的图像消息转化成OpenCV图像
+        self.object_detect(image)                              # 苹果检测
+
+    def object_position_callback(self, request, response):     # 创建回调函数，执行收到请求后对数据的处理
+        if request.get == True:
+            response.x = self.objectX                          # 目标物体的XY坐标
+            response.y = self.objectY
+            self.get_logger().info('Object position\nx: %d y: %d' %
+                                   (response.x, response.y))   # 输出日志信息，提示已经反馈
+        else:
+            response.x = 0
+            response.y = 0
+            self.get_logger().info('Invalid command')          # 输出日志信息，提示已经反馈
+        return response
+
+
+def main(args=None):                                 # ROS2节点主入口main函数
+    rclpy.init(args=args)                            # ROS2 Python接口初始化
+    node = ImageSubscriber("service_object_server")  # 创建ROS2节点对象并进行初始化
+    rclpy.spin(node)                                 # 循环等待ROS2退出
+    node.destroy_node()                              # 销毁节点对象
+    rclpy.shutdown()                                 # 关闭ROS2 Python接口
+    
+```
+
+### 服务：求和
+### 话题：通信 实现消息的传递（消息类型包含一个或者多个字段）
+### 小海龟仿真器（原理）
+## ROS2的常用命令行
+1. 工作空间相关
+- 创建工作空间     ` mkdir -p ~/ros2_ws/src    cd ~/ros2_ws/src`
+- 编译工作空间    ` cd ~/ros2_ws    colcon build`
+- 配置环境变量    ` source install/setup.bash`  #对bash终端
+2. 功能包相关
+- 创建功能包    ` ros2 pkg creat --build-type ament_cmake my_package --dependencies rclpy`
+- 列出所有功能包    ` ros2 pkg list`
+- 查找功能包的位置    ` ros2 pkg prefix my_package`
+3. 节点相关
+- 运行节点    ` ros2 run pkg_name node_name`
+- 列出所有运行节点    ` ros2 node list`
+- 查看节点信息    ` ros2 node info node_name`
+4. 话题相关
+- 列出所有话题    ` ros2 topic list`
+- 查看话题消息类型    ` ros2 topic type /topic_name`
+- 发布话题消息    ` ros2 topic pub -r 1 /my_topic std_msgs/msg/String "{data: 'Hello, ROS2!'}"`  #以1Hz的频率向话题发布（）类型的消息 消息内容为{……}
+- 订阅话题消息    ` ros2 topic echo /topic_name`
+5. 服务相关
+- 列出所有服务    ` ros2 service list`
+- 查看服务类型    ` ros2 service type /service_name`
+- 调用服务    ` ros2 service call /my_service my_package/srv/MyService "{request_param: 'value'}"`
+6. 参数相关
+- 列出节点的所有参数    `ros2 param list node_name `
+- 获取节点参数的值    ` ros2 param get node_name parameter_name`  #获取node_name中parameter_name节点的所有参数
+- 设置节点参数的值    ` ros2 param set node_name parameter_name "value"`
+7. 动作相关
+- 列出所有动作    `ros2 action list `
+- 查看动作类型    ` ros2 action type /action_name`
+- 发送动作目标    ` ros2 action send_goal /my_action my_package/action/MyAction "{goal_param: 'value'}"`
+
+## 补充
 
