@@ -64,6 +64,7 @@ ros2 run pkg_name node_name
 ```
 
 # opencv
+<https://www.opencv.org.cn/opencvdoc/2.3.2/html/doc/tutorials/imgproc/table_of_content_imgproc/table_of_content_imgproc.html>
 import cv2
 ## 下载一张图片，使用imread读取，然后用imshow显示图片，了解如何改变输出图像的大小，并让图像分别完整显示在显示器的四个角
 ```
@@ -212,7 +213,63 @@ blue_select = cv2.bitwise_and(img, img, mask=mask_blue)
 ```
 
 ## 学习OpenCV中基本的绘图功能，实现：画点、画线、画圆、画矩形。
-
+ OpenCV 的坐标系统中，第一个值是 y 坐标（对应图像的行），第二个值是 x 坐标（对应图像的列）
+```
+#创建一个三通道的512*512的画布
+img=np.zeros((512,512,3),dtype=np.uint8)
+```
+### 点
+```
+dot=(256,256)
+cv2.circle(img,dot,5,(0,255,0),-1)#5表示半径 线宽为-1表示绘制一个实心的圆形
+```
+### 线
+```
+st_line=(100,100)
+end_line=(400,400)
+cv2.line(img,st_line,end_line,(255,0,0),2)
+```
+### 圆
+```
+circle=(256,256)
+ras=50
+cv2.circle(img,circle,ras,(255,0,0),2)
+```
+### 矩形
+```
+top_left=(150,200)
+bottom_right=(350,400)
+cv2.rectangle(img,top_left,bottom_right,(0,255,255),2)
+```
+## 了解腐蚀、膨胀、开运算和闭运算，使用不同形状大小的算子，使用图片见图9
+腐蚀和膨胀是最基本的形态学运算。 <br>
+腐蚀和膨胀是针对白色部分（高亮部分）而言的。<br>
+膨胀就是对图像高亮部分进行“领域扩张”，效果图拥有比原图更大的高亮区域；腐蚀是原图中的高亮区域被蚕食，效果图拥有比原图更小的高亮区域。 <br>
+<https://www.opencv.org.cn/opencvdoc/2.3.2/html/doc/tutorials/imgproc/erosion_dilatation/erosion_dilatation.html>
+![image](https://github.com/user-attachments/assets/060f42ec-314c-47ec-8218-484ba70be604)
+![image](https://github.com/user-attachments/assets/21a17ef7-3d54-4452-bea2-c69a4983be46)
+![image](https://github.com/user-attachments/assets/5216f6bf-4bf0-4be5-8008-716ac189ffec)
+```
+kernel = np.ones((3,3),np.uint8)
+erosion = cv2.erode(img,kernel,iterations = 1)
+dilation = cv2.dilate(img,kernel,iterations = 1)
+```
+- 开运算：先腐蚀后膨胀，用于移除由图像噪音形成的斑点
+- 闭运算：先膨胀后腐蚀，用来连接被误分为许多小块的对象
+```
+kernel = cv2.getStructuringElement(cv2.MORPH_RECT,(3,3))
+opened = cv2.morphologyEx(gray, cv2.MORPH_OPEN, kernel,iterations=3)
+closed = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel,iterations=3)
+```
+## 了解canny算子原理（以及其进一步改进方法），并手动实现
+Canny边缘检测算子是John F. Canny于1986年开发出来的一个多级边缘检测算法。更为重要的是Canny创立了“边缘检测计算理论”（computational theory of edge detection）解释这项技术如何工作。
+### opencv提供的canny函数
+1. 使用高斯模糊，去除噪音点（cv2.GaussianBlur）
+2. 灰度转换（cv2.cvtColor）
+3. 使用sobel算子，计算出每个点的梯度大小和梯度方向
+4. 使用非极大值抑制(只有最大的保留)，消除边缘检测带来的杂散效应
+5. 应用双阈值，来确定真实和潜在的边缘
+6. 通过抑制弱边缘来完成最终的边缘检测
 
 
 
