@@ -1,34 +1,24 @@
-# -*- coding: utf-8 -*-
 import numpy as np
 import cv2
 
-def smooth(image, sigma = 1.4, length = 5):
-    """ Smooth the image
-    Compute a gaussian filter with sigma = sigma and kernal_length = length.
-    Each element in the kernal can be computed as below:
-        G[i, j] = (1/(2*pi*sigma**2))*exp(-((i-k-1)**2 + (j-k-1)**2)/2*sigma**2)
-    Then, use the gaussian filter to smooth the input image.
+def smooth(image, sigma = 1.4, length = 5):#对传入图像进行平滑处理
 
-    Args:
-        image: array of grey image
-        sigma: the sigma of gaussian filter, default to be 1.4
-        length: the kernal length, default to be 5
-
-    Returns:
-        the smoothed image
-    """
-    # Compute gaussian filter
+    #计算高斯核的中心位置
     k = length // 2
+    #初始化一个零矩阵存储
     gaussian = np.zeros([length, length])
     for i in range(length):
         for j in range(length):
+            #根据高斯公式计算每个元素的值
             gaussian[i, j] = np.exp(-((i-k) ** 2 + (j-k) ** 2) / (2 * sigma ** 2))
+    #对高斯核进行归一化处理
     gaussian /= 2 * np.pi * sigma ** 2
-    # Batch Normalization
+    # 确保所有元素之和为1
     gaussian = gaussian / np.sum(gaussian)
 
-    # Use Gaussian Filter
+    # 获取输入图像的宽度和高度
     W, H = image.shape
+    #初始化矩阵 存储平滑后的图像
     new_image = np.zeros([W - k * 2, H - k * 2])
 
     for i in range(W - 2 * k):
@@ -41,19 +31,7 @@ def smooth(image, sigma = 1.4, length = 5):
 
 
 def get_gradient_and_direction(image):
-    """ Compute gradients and its direction
-    Use Sobel filter to compute gradients and direction.
-         -1 0 1        -1 -2 -1
-    Gx = -2 0 2   Gy =  0  0  0
-         -1 0 1         1  2  1
 
-    Args:
-        image: array of grey image
-
-    Returns:
-        gradients: the gradients of each pixel
-        direction: the direction of the gradients of each pixel
-    """
     Gx = np.array([[-1, 0, 1], [-2, 0, 2], [-1, 0, 1]])
     Gy = np.array([[-1, -2, -1], [0, 0, 0], [1, 2, 1]])
 
@@ -77,15 +55,7 @@ def get_gradient_and_direction(image):
 
 
 def NMS(gradients, direction):
-    """ Non-maxima suppression
-
-    Args:
-        gradients: the gradients of each pixel
-        direction: the direction of the gradients of each pixel
-
-    Returns:
-        the output image
-    """
+  
     W, H = gradients.shape
     nms = np.copy(gradients[1:-1, 1:-1])
 
@@ -124,17 +94,7 @@ def NMS(gradients, direction):
 
 
 def double_threshold(nms, threshold1, threshold2):
-    """ Double Threshold
-    Use two thresholds to compute the edge.
-
-    Args:
-        nms: the input image
-        threshold1: the low threshold
-        threshold2: the high threshold
-
-    Returns:
-        The binary image.
-    """
+  
     visited = np.zeros_like(nms)
     output_image = nms.copy()
     W, H = output_image.shape
